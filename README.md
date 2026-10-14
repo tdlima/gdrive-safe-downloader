@@ -1,5 +1,12 @@
 # GDrive Safe Downloader
 
+![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
+![PowerShell](https://img.shields.io/badge/PowerShell-Windows-5391FE?logo=powershell&logoColor=white)
+![Google Drive API](https://img.shields.io/badge/Google%20Drive%20API-v3-4285F4?logo=googledrive&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-hist%C3%B3rico-003B57?logo=sqlite&logoColor=white)
+![pytest](https://img.shields.io/badge/pytest-184%20testes-0A9EDC?logo=pytest&logoColor=white)
+![Claude Code](https://img.shields.io/badge/Desenvolvido%20com-Claude%20Code-D97757?logo=claude&logoColor=white)
+
 Ferramenta de linha de comando para Windows que localiza, baixa e organiza arquivos do
 Google Drive — Meu Drive, arquivos e pastas compartilhados com você e drives
 compartilhados — com **verificação de integridade**, **retomada segura** de downloads
@@ -10,6 +17,23 @@ interrompidos e **histórico persistente** em SQLite.
 - Arquivos baixados primeiro como `.gdpart` e movidos para o nome definitivo **só depois** de verificados.
 - Nada é sobrescrito sem que você peça (`--on-conflict overwrite`).
 - **Sincronização**: depois de baixar uma pasta, `python main.py sync` baixa somente os arquivos novos (ou alterados) e os coloca no lugar certo da estrutura local.
+
+## Tecnologias utilizadas
+
+| Tecnologia | Uso no projeto |
+|---|---|
+| **Python 3.11+** | Linguagem de todo o sistema (testado com 3.14 e 3.15 no Windows 11) |
+| **PowerShell** | Instalação, execução no Windows e script de build (`build_exe.ps1`) |
+| **Google Drive API v3** | Pesquisa, listagem, download e exportação de arquivos |
+| **OAuth 2.0** (`google-auth`, `google-auth-oauthlib`) | Login oficial do Google, somente leitura |
+| **requests** | HTTP com streaming e retomada por intervalo de bytes |
+| **keyring** + Gerenciador de Credenciais do Windows | Armazenamento seguro do token |
+| **SQLite** | Histórico, estado das tarefas e pastas sincronizadas |
+| **tqdm** | Barras de progresso no terminal |
+| **pytest** | 184 testes automatizados com simulação da Drive API |
+| **PyInstaller** | Geração do executável `.exe` |
+| **Git** e **GitHub** | Versionamento e hospedagem do código |
+| **[Claude Code](https://claude.com/claude-code)** (Anthropic) | Desenvolvimento assistido por IA: arquitetura, código, testes e documentação |
 
 ---
 
