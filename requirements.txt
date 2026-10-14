@@ -1,0 +1,6 @@
+# Dependências de execução (Python 3.11+)
+google-auth>=2.30,<3            # credenciais OAuth e AuthorizedSession (biblioteca oficial do Google)
+google-auth-oauthlib>=1.2,<2    # fluxo OAuth "App para computador" (loopback)
+requests>=2.32,<3               # HTTP com streaming
+keyring>=25,<26                 # cofre do sistema (Windows: Gerenciador de Credenciais)
+tqdm>=4.66,<5                   # barras de progresso
