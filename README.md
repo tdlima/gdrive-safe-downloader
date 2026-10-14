@@ -59,8 +59,6 @@ gdrive-safe-downloader/
 │   ├── fakes.py               # simulação da Drive API com injeção de falhas
 │   └── test_*.py
 ├── docs/
-│   ├── ANALISE_DO_PROMPT.md   # análise do pedido original e melhorias aplicadas
-│   ├── PROMPT_MELHORADO.md    # versão revisada da especificação
 │   └── TESTES_INTEGRACAO.md   # roteiro de testes com conta Google real
 ├── requirements.txt / requirements-dev.txt
 ├── build_exe.ps1              # gera o .exe com PyInstaller
