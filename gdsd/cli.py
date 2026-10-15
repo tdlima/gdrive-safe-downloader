@@ -348,9 +348,17 @@ def download_folder(app: App, meta: dict[str, Any], resource_key: str | None = N
 # =============================================================== comandos
 def cmd_login(app: App) -> int:
     account, new = app.auth.login(app.args.client_secret, switch=app.args.switch,
-                                  open_browser=not app.args.no_browser)
+                                  open_browser=not app.args.no_browser,
+                                  manual=app.args.manual, port=app.args.port or 0)
     if new:
         echo(f"Login concluído. Conta conectada: {account.email}")
+        store = app.auth.store
+        if hasattr(store, "location"):
+            echo(f"Autorização guardada em: {store.location()}")
+        if getattr(store, "is_fallback", False):
+            echo("Aviso: nenhum cofre de senhas do sistema foi encontrado (comum em Linux sem interface "
+                 "gráfica). A autorização foi salva num arquivo legível só pelo seu usuário. "
+                 "Para usar o GNOME Keyring/KWallet, instale-o e repita o login.")
     else:
         echo(f"Já autenticado como {account.email}. Para trocar de conta: python main.py login --switch")
     app.offer_resume()
@@ -365,6 +373,8 @@ def cmd_account(app: App) -> int:
     about = app.client.get_about()
     echo(f"Conta conectada: {about['email']}" + (f" ({about['name']})" if about.get("name") else ""))
     echo("Permissão concedida: somente leitura do Google Drive (drive.readonly)")
+    if hasattr(app.auth.store, "location"):
+        echo(f"Autorização guardada em: {app.auth.store.location()}")
     echo(f"Pasta de downloads padrão: {app.settings.download_dir.resolve()}")
     echo(f"Dados do programa (histórico, logs): {app.settings.home}")
     counts = app.history.counts(about["email"])
@@ -857,6 +867,10 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--client-secret", metavar="ARQUIVO", help="caminho do client_secret.json (copiado para os dados do programa)")
     sp.add_argument("--switch", action="store_true", help="força novo login para trocar de conta")
     sp.add_argument("--no-browser", action="store_true", help="não abre o navegador automaticamente; exibe o link")
+    sp.add_argument("--manual", action="store_true",
+                    help="login copiando e colando o endereço (servidores Linux, SSH, máquinas sem navegador)")
+    sp.add_argument("--port", type=int, metavar="PORTA",
+                    help="porta fixa do retorno do login (ex.: para 'ssh -L PORTA:localhost:PORTA')")
 
     add("account", "exibe a conta conectada e as pastas usadas pelo programa")
 

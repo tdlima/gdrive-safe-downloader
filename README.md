@@ -1,19 +1,23 @@
 # GDrive Safe Downloader
 
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
-![PowerShell](https://img.shields.io/badge/PowerShell-Windows-5391FE?logo=powershell&logoColor=white)
+![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?logo=windows&logoColor=white)
+![Linux](https://img.shields.io/badge/Linux-Ubuntu%20%7C%20Debian%20%7C%20Fedora-FCC624?logo=linux&logoColor=black)
+![PowerShell](https://img.shields.io/badge/PowerShell-5391FE?logo=powershell&logoColor=white)
+![Bash](https://img.shields.io/badge/Bash-4EAA25?logo=gnubash&logoColor=white)
 ![Google Drive API](https://img.shields.io/badge/Google%20Drive%20API-v3-4285F4?logo=googledrive&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-hist%C3%B3rico-003B57?logo=sqlite&logoColor=white)
-![pytest](https://img.shields.io/badge/pytest-189%20testes-0A9EDC?logo=pytest&logoColor=white)
+![pytest](https://img.shields.io/badge/pytest-205%20testes-0A9EDC?logo=pytest&logoColor=white)
+![Testes](https://github.com/tdlima/gdrive-safe-downloader/actions/workflows/testes.yml/badge.svg)
 ![Claude Code](https://img.shields.io/badge/Desenvolvido%20com-Claude%20Code-D97757?logo=claude&logoColor=white)
 
-Ferramenta de linha de comando para Windows que localiza, baixa e organiza arquivos do
+Ferramenta de linha de comando para **Windows e Linux** que localiza, baixa e organiza arquivos do
 Google Drive — Meu Drive, arquivos e pastas compartilhados com você e drives
 compartilhados — com **verificação de integridade**, **retomada segura** de downloads
 interrompidos e **histórico persistente** em SQLite.
 
 - Acesso **somente leitura** (`drive.readonly`), via OAuth 2.0 oficial. A senha do Google nunca passa pelo programa.
-- Token guardado no **Gerenciador de Credenciais do Windows** (não em arquivo, não no banco).
+- Token guardado no **cofre de senhas do sistema** (Gerenciador de Credenciais do Windows; GNOME Keyring/KWallet no Linux), nunca no banco de dados.
 - Arquivos baixados primeiro como `.gdpart` e movidos para o nome definitivo **só depois** de verificados.
 - Nada é sobrescrito sem que você peça (`--on-conflict overwrite`).
 - **Sincronização**: depois de baixar uma pasta, `python main.py sync` baixa somente os arquivos novos (ou alterados) e os coloca no lugar certo da estrutura local.
@@ -22,17 +26,18 @@ interrompidos e **histórico persistente** em SQLite.
 
 | Tecnologia | Uso no projeto |
 |---|---|
-| **Python 3.11+** | Linguagem de todo o sistema (testado com 3.14 e 3.15 no Windows 11) |
+| **Python 3.11+** | Linguagem de todo o sistema (Windows 11 com 3.14/3.15; Linux e Windows com 3.11/3.13 no GitHub Actions) |
 | **PowerShell** | Instalação, execução no Windows e script de build (`build_exe.ps1`) |
+| **Bash** | Instalação, execução no Linux e script de build (`build.sh`) |
 | **Google Drive API v3** | Pesquisa, listagem, download e exportação de arquivos |
 | **OAuth 2.0** (`google-auth`, `google-auth-oauthlib`) | Login oficial do Google, somente leitura |
 | **requests** | HTTP com streaming e retomada por intervalo de bytes |
-| **keyring** + Gerenciador de Credenciais do Windows | Armazenamento seguro do token |
+| **keyring** (Gerenciador de Credenciais do Windows / Secret Service no Linux) | Armazenamento seguro do token |
 | **SQLite** | Histórico, estado das tarefas e pastas sincronizadas |
 | **tqdm** | Barras de progresso no terminal |
-| **pytest** | 189 testes automatizados com simulação da Drive API |
+| **pytest** | 205 testes automatizados com simulação da Drive API |
 | **PyInstaller** | Geração do executável `.exe` |
-| **Git** e **GitHub** | Versionamento e hospedagem do código |
+| **Git**, **GitHub** e **GitHub Actions** | Versionamento, hospedagem e testes automáticos em Linux e Windows a cada envio |
 | **[Claude Code](https://claude.com/claude-code)** (Anthropic) | Desenvolvimento assistido por IA: arquitetura, código, testes e documentação |
 
 ---
@@ -41,7 +46,7 @@ interrompidos e **histórico persistente** em SQLite.
 
 1. [Estrutura do projeto](#1-estrutura-do-projeto)
 2. [Decisões de projeto](#2-decisões-de-projeto)
-3. [Instalação no Windows](#3-instalação-no-windows)
+3. [Instalação (Windows e Linux)](#3-instalação-windows-e-linux)
 4. [Configurar o Google Cloud (uma vez)](#4-configurar-o-google-cloud-uma-vez)
 5. [Primeiro login](#5-primeiro-login)
 6. [Comandos](#6-comandos)
@@ -52,7 +57,7 @@ interrompidos e **histórico persistente** em SQLite.
 11. [Segurança](#11-segurança)
 12. [Limitações conhecidas](#12-limitações-conhecidas)
 13. [Testes](#13-testes)
-14. [Gerar executável (.exe)](#14-gerar-executável-exe)
+14. [Gerar executável](#14-gerar-executável)
 15. [Solução de problemas](#15-solução-de-problemas)
 
 ---
@@ -79,18 +84,26 @@ gdrive-safe-downloader/
 │   ├── logging_setup.py       # logs JSON com remoção de credenciais
 │   ├── ui.py                  # progresso, tabelas, perguntas
 │   └── errors.py              # exceções com mensagens em português
-├── tests/                     # 189 testes automatizados (Drive simulado, sem conta real)
+├── tests/                     # 205 testes automatizados (Drive simulado, sem conta real)
 │   ├── fakes.py               # simulação da Drive API com injeção de falhas
 │   └── test_*.py
 ├── docs/
 │   └── TESTES_INTEGRACAO.md   # roteiro de testes com conta Google real
 ├── requirements.txt / requirements-dev.txt
-├── build_exe.ps1              # gera o .exe com PyInstaller
+├── build_exe.ps1              # gera o .exe (Windows) com PyInstaller
+├── build.sh                   # gera o executável para Linux
+├── .github/workflows/testes.yml  # testes automáticos em Linux e Windows
 ├── pytest.ini
 └── .gitignore
 ```
 
-Dados do programa (fora da pasta do projeto): `%LOCALAPPDATA%\GDriveSafeDownloader\`
+Dados do programa (fora da pasta do projeto):
+
+| Sistema | Pasta |
+|---|---|
+| Windows | `%LOCALAPPDATA%\GDriveSafeDownloader\` |
+| Linux | `~/.local/share/gdrive-safe-downloader/` (ou `$XDG_DATA_HOME/gdrive-safe-downloader/`) |
+
 
 | Arquivo | Conteúdo |
 |---|---|
@@ -99,7 +112,7 @@ Dados do programa (fora da pasta do projeto): `%LOCALAPPDATA%\GDriveSafeDownload
 | `logs\gdsd.log` | log JSON rotativo (5 × 5 MB), sem tokens |
 | `config.toml` | configuração opcional (`python main.py config --init`) |
 
-O token OAuth fica no **Gerenciador de Credenciais do Windows** (entrada `gdrive-safe-downloader`).
+O token OAuth fica no **cofre de senhas do sistema** (entrada `gdrive-safe-downloader`): Gerenciador de Credenciais no Windows; GNOME Keyring ou KWallet (Secret Service) no Linux. Em Linux **sem** cofre de senhas (servidores, SSH), fica em `token.json` nessa pasta, com permissão `600` (só o seu usuário lê) — o mesmo que fazem o `gh` e o `gcloud`. O comando `account` mostra onde está.
 
 ## 2. Decisões de projeto
 
@@ -107,7 +120,7 @@ O token OAuth fica no **Gerenciador de Credenciais do Windows** (entrada `gdrive
 |---|---|---|
 | Escopo OAuth | apenas `drive.readonly` | Único escopo que permite ler arquivos compartilhados e pesquisar; o e-mail vem de `about.get`, sem escopos extras. |
 | Cliente HTTP | `google-auth` + `AuthorizedSession` (REST) | `google-api-python-client` usa `httplib2`, que não é thread-safe e dificulta `Range`. Ambas são bibliotecas oficiais do Google. |
-| Token | só o *refresh token*, no cofre do Windows (DPAPI, via `keyring`) | O *access token* fica só em memória. Nada de token em arquivo ou no SQLite. |
+| Token | só o *refresh token*, no cofre do sistema via `keyring` (Windows: DPAPI; Linux: Secret Service); em Linux sem cofre, arquivo com permissão 600 | O *access token* fica só em memória. Nada de token em arquivo ou no SQLite. |
 | Download | streaming em blocos de 256 KB, *checkpoint* (flush + fsync + SQLite) a cada 8 MB | Memória constante e progresso durável para retomada. |
 | Retomada | `Range: bytes=N-` somente se revisão/checksum remotos forem idênticos ao registrado; exige resposta `206` com `Content-Range` coerente | Nunca mistura duas versões do arquivo. Sem prova, reinicia do zero. |
 | Exportações | nunca retomadas; sempre do zero | O conteúdo convertido pode mudar entre tentativas e não tem checksum. |
@@ -119,9 +132,11 @@ O token OAuth fica no **Gerenciador de Credenciais do Windows** (entrada `gdrive
 | Estados | pendente, em andamento, concluída, interrompida, cancelada, com erro, **ignorada** | "Ignorada" foi acrescentado para itens não baixáveis/já existentes (o resumo exige essa contagem). |
 | Comandos extras | `cancel`, `verify`, `formats`, `config` | Necessários para o estado "cancelada", para a verificação posterior por SHA-256 e para descobrir opções. |
 
-## 3. Instalação no Windows
+## 3. Instalação (Windows e Linux)
 
-Requisitos: **Windows 10/11** e **Python 3.11 ou superior** (testado com 3.14).
+Requisitos: **Python 3.11 ou superior** em **Windows 10/11** ou **Linux** (Ubuntu 22.04+, Debian 12+, Fedora, etc.).
+
+### Windows
 
 ```powershell
 # 1. Instale o Python (marque "Add python.exe to PATH") — ou: winget install Python.Python.3.13
@@ -140,6 +155,33 @@ python main.py --help
 ```
 
 No Prompt de Comando (cmd), ative o ambiente com `.venv\Scripts\activate.bat`.
+
+### Linux
+
+```bash
+# 1. Python e venv (Ubuntu/Debian; no Fedora: sudo dnf install python3 git)
+sudo apt update && sudo apt install -y python3 python3-venv python3-pip git
+python3 --version        # precisa ser 3.11 ou superior
+
+# 2. Baixe o projeto
+git clone https://github.com/tdlima/gdrive-safe-downloader.git
+cd gdrive-safe-downloader
+
+# 3. Crie e ative o ambiente virtual
+python3 -m venv .venv
+source .venv/bin/activate
+
+# 4. Instale as dependências
+pip install -r requirements.txt
+
+# 5. Confira
+python main.py --help
+```
+
+- Com o ambiente ativado, `python` aponta para o Python certo; fora dele, use `.venv/bin/python main.py ...`.
+- Todos os comandos deste README valem no Linux. Troque apenas os caminhos: `--dest ~/Cursos` em vez de `--dest "D:\Cursos"`.
+- **Cofre de senhas**: em desktops com GNOME ou KDE, o token vai para o GNOME Keyring/KWallet automaticamente. Em servidores sem cofre, vai para um arquivo protegido (veja a seção 5).
+- Para escolher manualmente onde guardar o token: `token_store = "keyring"` ou `"file"` no `config.toml` (ou a variável `GDSD_TOKEN_STORE`).
 
 ## 4. Configurar o Google Cloud (uma vez)
 
@@ -172,8 +214,29 @@ python main.py login --client-secret "C:\Users\voce\Downloads\client_secret.json
 2. Escolha a conta e autorize **"Ver e baixar todos os seus arquivos do Google Drive"**. Em modo de teste aparece o aviso "O Google não verificou este app" → *Continuar*.
 3. O terminal mostra: `Login concluído. Conta conectada: voce@exemplo.com`.
 
-O `client_secret.json` é copiado para `%LOCALAPPDATA%\GDriveSafeDownloader\`; nas próximas execuções não é preciso informá-lo.
+No Linux: `python main.py login --client-secret ~/Downloads/client_secret.json`.
+
+O `client_secret.json` é copiado para a pasta de dados do programa; nas próximas execuções não é preciso informá-lo.
 O acesso é renovado automaticamente. Para trocar de conta: `python main.py login --switch`.
+
+### Login em Linux sem navegador (servidor, SSH, contêiner)
+
+Opção 1 — copiar e colar (funciona em qualquer lugar):
+
+```bash
+python main.py login --client-secret ~/client_secret.json --manual
+```
+
+1. O terminal mostra um link. Abra-o em um navegador de **qualquer** computador e autorize.
+2. O navegador tenta abrir `http://localhost:8765/?...` e mostra erro de conexão — é esperado.
+3. Copie o endereço **completo** da barra do navegador e cole no terminal.
+
+Opção 2 — túnel SSH (o navegador do seu computador conclui o login no servidor):
+
+```bash
+ssh -L 8765:localhost:8765 usuario@servidor          # no seu computador
+python main.py login --no-browser --port 8765         # no servidor; abra o link exibido no seu navegador
+```
 
 ## 6. Comandos
 
@@ -301,9 +364,9 @@ python main.py sync                                            # baixa só as no
 - Também funciona se você renomeou a pasta (ex.: `workshop` → `Workshop 2026`).
 - Se você rodar `sync` depois de mover a pasta e antes do `relocate`, o programa **não** baixa tudo de novo. Ele avisa que a pasta não foi encontrada e mostra o comando `relocate` a usar.
 
-#### Sincronizar automaticamente (Agendador de Tarefas do Windows)
+#### Sincronizar automaticamente
 
-Para verificar novidades todo dia às 8h (ajuste os caminhos para a pasta do projeto):
+**Windows (Agendador de Tarefas)** — todo dia às 8h (ajuste os caminhos para a pasta do projeto):
 
 ```powershell
 schtasks /Create /SC DAILY /ST 08:00 /TN "GDrive Sync" /TR "\"C:\Users\VOCE\Desktop\Projeto Sistema de Download\.venv\Scripts\python.exe\" \"C:\Users\VOCE\Desktop\Projeto Sistema de Download\main.py\" --no-input sync"
@@ -312,6 +375,16 @@ schtasks /Create /SC DAILY /ST 08:00 /TN "GDrive Sync" /TR "\"C:\Users\VOCE\Desk
 - A tarefa roda com o seu usuário do Windows, e usa o mesmo login e o mesmo histórico.
 - O resultado de cada execução aparece em `python main.py sync --list` e no log.
 - Para remover a tarefa: `schtasks /Delete /TN "GDrive Sync"`.
+
+**Linux (cron)** — todo dia às 8h. Rode `crontab -e` e acrescente a linha (ajuste o caminho do projeto):
+
+```bash
+0 8 * * * cd "$HOME/gdrive-safe-downloader" && .venv/bin/python main.py --no-input sync >> "$HOME/gdrive-sync.log" 2>&1
+```
+
+- Em servidores sem cofre de senhas, o login guardado em arquivo (seção 5) permite que o cron rode sem ninguém logado.
+- Em desktops, o GNOME Keyring/KWallet só fica desbloqueado com a sessão gráfica aberta. Para rodar o cron com a sessão fechada, use `token_store = "file"` no `config.toml` e faça o login de novo.
+- Para remover: `crontab -e` e apague a linha.
 
 ### `resume` — retomar downloads interrompidos
 ```powershell
@@ -410,7 +483,7 @@ Se a verificação falhar logo após uma retomada, o programa baixa de novo do z
 
 ## 10. Configuração
 
-`python main.py config --init` cria `%LOCALAPPDATA%\GDriveSafeDownloader\config.toml`:
+`python main.py config --init` cria `config.toml` na pasta de dados do programa (Windows: `%LOCALAPPDATA%\GDriveSafeDownloader\`; Linux: `~/.local/share/gdrive-safe-downloader/`):
 
 ```toml
 [geral]
@@ -422,6 +495,7 @@ requests_per_second = 8
 on_conflict = "rename"     # rename | skip | overwrite
 min_free_space_mb = 200    # margem mínima de espaço livre
 log_level = "INFO"
+token_store = "auto"       # auto | keyring | file (Linux sem cofre de senhas)
 
 [exportacao]
 document = "docx"
@@ -430,16 +504,16 @@ presentation = "pptx"
 drawing = "pdf"
 ```
 
-Variáveis de ambiente: `GDSD_HOME` (pasta de dados), `GDSD_DOWNLOAD_DIR`, `GDSD_MAX_WORKERS`, `GDSD_CLIENT_SECRET`.
+Variáveis de ambiente: `GDSD_HOME` (pasta de dados), `GDSD_DOWNLOAD_DIR`, `GDSD_MAX_WORKERS`, `GDSD_CLIENT_SECRET`, `GDSD_TOKEN_STORE`.
 
 ## 11. Segurança
 
 - Login exclusivamente pelo fluxo OAuth oficial no navegador; sem scraping, cookies ou senha.
 - Somente leitura: o programa não consegue alterar nem apagar nada no seu Drive.
-- Refresh token no Gerenciador de Credenciais do Windows; access token só em memória; `logout` revoga no Google.
+- Refresh token no cofre de senhas do sistema (ou, em Linux sem cofre, em arquivo com permissão 600); access token só em memória; `logout` revoga no Google e apaga dos dois lugares.
 - O histórico SQLite não contém senhas nem tokens; os logs passam por filtro que remove tokens, `client_secret` e códigos de autorização.
 - Nomes vindos do Drive são sanitizados: caracteres proibidos, `..`, nomes reservados (`CON`, `NUL`, `COM1`…), pontos/espaços finais e comprimento. Todo caminho final é verificado para permanecer dentro do destino escolhido (proteção contra *path traversal*).
-- Caminhos acima de 260 caracteres usam o prefixo `\\?\` automaticamente.
+- No Windows, caminhos acima de 260 caracteres usam o prefixo `\\?\` automaticamente. No Linux, os nomes também seguem as regras do Windows, para que a pasta possa ser copiada para um pendrive ou PC com Windows sem erros.
 - Links de exportação alternativos só são aceitos de domínios do Google via HTTPS.
 - **Não há contorno de permissões**: arquivos com download desativado pelo proprietário, bloqueados por política do domínio ou sinalizados como nocivos pelo Google são registrados como erro, com a explicação.
 - Uma única instância por vez pode baixar (trava de arquivo liberada automaticamente se o processo morrer).
@@ -459,9 +533,11 @@ Variáveis de ambiente: `GDSD_HOME` (pasta de dados), `GDSD_DOWNLOAD_DIR`, `GDSD
 
 ```powershell
 pip install -r requirements-dev.txt
-python -m pytest            # 189 testes, ~4 s
-python -m pytest -v tests\test_resume.py
+python -m pytest            # 205 testes, ~4 s
+python -m pytest -v tests/test_resume.py
 ```
+
+A cada envio ao GitHub, o **GitHub Actions** roda todos os testes em **Ubuntu e Windows**, com Python 3.11 e 3.13 (selo "Testes" no topo; detalhes na aba *Actions* do repositório).
 
 Os testes automatizados usam uma **simulação da Drive API** (`tests/fakes.py`) — nenhuma conta Google é necessária. Cobrem:
 
@@ -478,10 +554,13 @@ Os testes automatizados usam uma **simulação da Drive API** (`tests/fakes.py`)
 | Nomes no Windows, path traversal, caminhos longos | `test_paths.py` |
 | Níveis de integridade, backoff, logs sem segredos | `test_integrity_retry_misc.py` |
 | Comandos da CLI de ponta a ponta (com Drive simulado) | `test_cli.py` |
+| Linux: token em arquivo com permissão 600, escolha automática do cofre, login sem navegador, pastas XDG, pendrives sem hard links | `test_linux_support.py` |
 
 **O que os testes automatizados NÃO comprovam**: o comportamento contra os servidores reais do Google (login no navegador, consentimento, cotas reais, drives compartilhados reais). Para isso siga o roteiro em [docs/TESTES_INTEGRACAO.md](docs/TESTES_INTEGRACAO.md).
 
-## 14. Gerar executável (.exe)
+## 14. Gerar executável
+
+### Windows (.exe)
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
@@ -493,6 +572,17 @@ Os testes automatizados usam uma **simulação da Drive API** (`tests/fakes.py`)
 - Gera um único arquivo `dist\gdrive-downloader.exe` (~18 MB) que não exige Python instalado. Nos comandos, troque `python main.py` por `.\gdrive-downloader.exe` (as mensagens do programa já fazem essa troca).
 - O `.exe` usa os mesmos dados (`%LOCALAPPDATA%\GDriveSafeDownloader`), então histórico e login são compartilhados com a versão em Python.
 - Antivírus às vezes desconfiam de executáveis PyInstaller não assinados; se necessário, assine o `.exe` ou use a versão em Python.
+
+### Linux
+
+```bash
+source .venv/bin/activate
+./build.sh
+./dist/gdrive-downloader --help
+```
+
+- O executável precisa ser gerado **no próprio Linux** (o PyInstaller não gera executáveis para outro sistema).
+- Gere-o na distribuição mais antiga em que for usá-lo: um executável feito no Ubuntu 24.04 pode não rodar em distribuições com bibliotecas mais antigas.
 
 ## 15. Solução de problemas
 
@@ -506,6 +596,9 @@ Os testes automatizados usam uma **simulação da Drive API** (`tests/fakes.py`)
 | `Recurso não encontrado ou a conta conectada não tem acesso` | Confira se está logado com a conta certa (`account`) e se o item foi compartilhado com ela. |
 | `Download desativado pelo proprietário` | Restrição do dono do arquivo; não há como (nem se deve) contornar. |
 | `Outra execução do programa está baixando` | Aguarde a outra janela terminar. |
-| Caracteres estranhos no terminal | Use o Windows Terminal; ou execute `chcp 65001` antes. |
+| Caracteres estranhos no terminal | Windows: use o Windows Terminal ou execute `chcp 65001`. Linux: confira se `locale` mostra UTF-8. |
+| Linux: aviso "nenhum cofre de senhas do sistema foi encontrado" | Normal em servidores: o token foi salvo em arquivo com permissão 600. Em desktops, instale `gnome-keyring` (GNOME) ou use KWallet (KDE) e repita o login. |
+| Linux: `python3 -m venv` falha com "ensurepip is not available" | `sudo apt install python3-venv` (ou o pacote da sua versão, ex.: `python3.12-venv`). |
+| Linux: o login não abre o navegador | Use `login --manual` (seção 5). |
 | `Python não foi encontrado; executar sem argumentos para instalar do Microsoft Store` | O atalho da Microsoft Store está à frente no PATH. Use `py` no lugar de `python`, ou desative em *Configurações → Aplicativos → Configurações avançadas → Aliases de execução do aplicativo* (python.exe / python3.exe). Com o ambiente virtual ativado, `python` funciona normalmente. |
-| Detalhes técnicos | `%LOCALAPPDATA%\GDriveSafeDownloader\logs\gdsd.log` ou `-v`. |
+| Detalhes técnicos | Log em `%LOCALAPPDATA%\GDriveSafeDownloader\logs\gdsd.log` (Windows) ou `~/.local/share/gdrive-safe-downloader/logs/gdsd.log` (Linux); ou use `-v`. |

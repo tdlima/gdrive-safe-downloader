@@ -23,6 +23,7 @@ KEYRING_SERVICE = "gdrive-safe-downloader"
 
 MiB = 1024 * 1024
 CONFLICT_POLICIES = ("rename", "skip", "overwrite")
+TOKEN_STORES = ("auto", "keyring", "file")
 
 DEFAULT_EXPORT_FORMATS: dict[str, str] = {
     "document": "docx",
@@ -41,7 +42,11 @@ def app_home() -> Path:
     if sys.platform == "win32":
         base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
         return Path(base) / APP_NAME
-    return Path.home() / ".local" / "share" / "gdrive-safe-downloader"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / APP_NAME
+    # Linux e outros Unix: especificação XDG
+    base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+    return Path(base) / "gdrive-safe-downloader"
 
 
 @dataclass
@@ -61,6 +66,9 @@ class Settings:
     on_conflict: str = "rename"
     min_free_space: int = 200 * MiB
     log_level: str = "INFO"
+    # auto: cofre do sistema (Windows/macOS/Linux com Secret Service); se não houver
+    # cofre (Linux sem interface gráfica), arquivo protegido com permissão 600.
+    token_store: str = "auto"
     export_formats: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_EXPORT_FORMATS))
 
     @property
@@ -74,6 +82,10 @@ class Settings:
     @property
     def lock_path(self) -> Path:
         return self.home / "gdsd.lock"
+
+    @property
+    def token_file(self) -> Path:
+        return self.home / "token.json"
 
     @property
     def config_path(self) -> Path:
@@ -102,6 +114,8 @@ class Settings:
             raise ConfigError(
                 f"on_conflict inválido: {self.on_conflict!r}. Use: {', '.join(CONFLICT_POLICIES)}."
             )
+        if self.token_store not in TOKEN_STORES:
+            raise ConfigError(f"token_store inválido: {self.token_store!r}. Use: {', '.join(TOKEN_STORES)}.")
         if self.requests_per_second <= 0:
             raise ConfigError("requests_per_second deve ser maior que zero.")
 
@@ -133,6 +147,7 @@ def load_settings(home: Path | None = None) -> Settings:
         "min_free_space_mb": ("min_free_space", lambda v: int(v) * MiB),
         "log_level": ("log_level", lambda v: str(v).upper()),
         "read_timeout": ("read_timeout", float),
+        "token_store": ("token_store", lambda v: str(v).lower()),
     }
     for key, (attr, conv) in mapping.items():
         if key in general:
@@ -148,6 +163,9 @@ def load_settings(home: Path | None = None) -> Settings:
     env_dir = os.environ.get("GDSD_DOWNLOAD_DIR")
     if env_dir:
         settings.download_dir = Path(env_dir).expanduser()
+    env_store = os.environ.get("GDSD_TOKEN_STORE")
+    if env_store:
+        settings.token_store = env_store.lower()
     env_workers = os.environ.get("GDSD_MAX_WORKERS")
     if env_workers:
         try:
@@ -189,6 +207,7 @@ EXAMPLE_CONFIG = """# Configuração do GDrive Safe Downloader (todas as chaves 
 # on_conflict = "rename"     # rename | skip | overwrite
 # min_free_space_mb = 200    # margem mínima de espaço livre
 # log_level = "INFO"
+# token_store = "auto"       # auto | keyring | file (file: Linux sem cofre de senhas)
 
 [exportacao]
 # document = "docx"          # docx | pdf | odt | rtf | txt | md | epub | html

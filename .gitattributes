@@ -1,0 +1,5 @@
+# Finais de linha corretos para cada sistema
+* text=auto
+*.sh text eol=lf
+*.ps1 text eol=crlf
+*.py text eol=lf

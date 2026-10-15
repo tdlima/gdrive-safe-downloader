@@ -3,6 +3,7 @@ movimentação atômica sem sobrescrita."""
 
 from __future__ import annotations
 
+import errno
 import os
 import re
 import sys
@@ -142,7 +143,17 @@ def move_no_overwrite(src: Path, dst: Path) -> None:
     if sys.platform == "win32":
         os.rename(io_path(src), io_path(dst))
         return
-    os.link(src, dst)
+    try:
+        os.link(src, dst)  # falha com FileExistsError se dst existir
+    except FileExistsError:
+        raise
+    except OSError:
+        # Sistemas de arquivos sem hard links (FAT32/exFAT de pendrives e HDs
+        # externos, alguns compartilhamentos de rede): verifica e renomeia.
+        if os.path.lexists(dst):
+            raise FileExistsError(errno.EEXIST, "Arquivo já existe", str(dst)) from None
+        os.rename(src, dst)
+        return
     os.unlink(src)
 
 

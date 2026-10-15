@@ -3,8 +3,10 @@
 - A senha do Google nunca passa pelo programa: o login acontece no navegador.
 - Escopo único: ``drive.readonly`` (leitura de arquivos e metadados). O e-mail da
   conta é obtido por ``about.get`` da própria Drive API, sem escopos extras.
-- Apenas o *refresh token* é persistido, no Gerenciador de Credenciais do Windows
-  (via ``keyring``). O *access token* fica só em memória e é renovado a cada uso.
+- Apenas o *refresh token* é persistido, no cofre de senhas do sistema via
+  ``keyring`` (Windows: Gerenciador de Credenciais; Linux: Secret Service/GNOME
+  Keyring/KWallet; macOS: Keychain). Em Linux sem cofre, num arquivo com
+  permissão 600 (ver :class:`AutoTokenStore`). O *access token* fica só em memória.
 """
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ import json
 import logging
 import os
 import shutil
+from urllib.parse import parse_qs, urlsplit
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -89,6 +92,124 @@ class KeyringTokenStore:
             pass
 
 
+class FileTokenStore:
+    """Token em arquivo JSON legível apenas pelo próprio usuário (permissão 600,
+    pasta 700). Usado em Linux sem cofre de senhas (servidores, SSH, contêineres),
+    como fazem o ``gh`` e o ``gcloud``. Proteja a conta do sistema operacional."""
+
+    def __init__(self, path: Path):
+        self.path = Path(path)
+
+    def load(self) -> dict[str, Any] | None:
+        if not self.path.is_file():
+            return None
+        if os.name == "posix" and self.path.stat().st_mode & 0o077:
+            os.chmod(self.path, 0o600)  # corrige permissões abertas demais
+        try:
+            return json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+
+    def save(self, data: dict[str, Any]) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        if os.name == "posix":
+            os.chmod(self.path.parent, 0o700)
+        tmp = self.path.with_name(self.path.name + ".tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, separators=(",", ":"))
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, self.path)
+        if os.name == "posix":
+            os.chmod(self.path, 0o600)
+
+    def delete(self) -> None:
+        try:
+            self.path.unlink()
+        except FileNotFoundError:
+            pass
+
+    def location(self) -> str:
+        return f"arquivo {self.path} (permissão 600)"
+
+
+def keyring_available() -> bool:
+    """True se existir um cofre de senhas utilizável (Windows, macOS, Linux com
+    GNOME Keyring/KWallet via Secret Service)."""
+    try:
+        import keyring
+        from keyring.backends import fail
+
+        backend = keyring.get_keyring()
+        if isinstance(backend, fail.Keyring) or getattr(backend, "priority", 1) <= 0:
+            return False
+        backend.get_password(KEYRING_SERVICE, "__teste_de_disponibilidade__")
+        return True
+    except Exception:  # noqa: BLE001 - D-Bus ausente, cofre bloqueado etc.
+        return False
+
+
+class AutoTokenStore:
+    """Escolhe onde guardar o token conforme ``token_store``:
+
+    - ``keyring``: sempre o cofre do sistema (erro se não existir);
+    - ``file``: sempre o arquivo protegido;
+    - ``auto``: cofre do sistema se disponível; senão, o arquivo (com aviso).
+    """
+
+    def __init__(self, mode: str, keyring_store: TokenStore, file_store: FileTokenStore,
+                 available: Callable[[], bool] = keyring_available):
+        self.mode = mode
+        self.keyring_store = keyring_store
+        self.file_store = file_store
+        self._available = available
+        self._use_keyring: bool | None = None
+
+    @property
+    def uses_keyring(self) -> bool:
+        if self._use_keyring is None:
+            if self.mode == "file":
+                self._use_keyring = False
+            elif self.mode == "keyring":
+                self._use_keyring = True
+            else:
+                self._use_keyring = self._available()
+        return self._use_keyring
+
+    @property
+    def is_fallback(self) -> bool:
+        return self.mode == "auto" and not self.uses_keyring
+
+    def load(self) -> dict[str, Any] | None:
+        if self.uses_keyring:
+            data = self.keyring_store.load()
+            if data or self.mode == "keyring":
+                return data
+        return self.file_store.load()
+
+    def save(self, data: dict[str, Any]) -> None:
+        if self.uses_keyring:
+            self.keyring_store.save(data)
+            self.file_store.delete()  # não deixa cópia em arquivo para trás
+        else:
+            self.file_store.save(data)
+
+    def delete(self) -> None:
+        if self.uses_keyring:
+            self.keyring_store.delete()
+        self.file_store.delete()
+
+    def location(self) -> str:
+        if self.uses_keyring:
+            return "cofre de senhas do sistema (Gerenciador de Credenciais / Secret Service / Keychain)"
+        return self.file_store.location()
+
+
+def make_token_store(settings: Settings) -> AutoTokenStore:
+    return AutoTokenStore(settings.token_store, KeyringTokenStore(), FileTokenStore(settings.token_file))
+
+
 @dataclass(frozen=True)
 class AccountInfo:
     email: str
@@ -147,9 +268,13 @@ class AuthManager:
         about_fetcher: AboutFetcher | None = None,
         revoke: Callable[[str], bool] | None = None,
         request_factory: Callable[[], Any] = Request,
+        ask: Callable[[str], str] = input,
+        say: Callable[[str], None] = print,
     ):
         self.settings = settings
-        self.store = store or KeyringTokenStore()
+        self.store = store or make_token_store(settings)
+        self.ask = ask
+        self.say = say
         self.flow_factory = flow_factory or _default_flow_factory
         self.about_fetcher = about_fetcher or _default_about
         self.revoke = revoke or _default_revoke
@@ -163,7 +288,7 @@ class AuthManager:
             raise AuthError(
                 "Arquivo client_secret.json não encontrado. Baixe-o no Google Cloud Console "
                 "(veja o README, seção 'Configurar o Google Cloud') e execute:\n"
-                "  python main.py login --client-secret CAMINHO\\client_secret.json"
+                f"  python main.py login --client-secret {os.path.join('CAMINHO', 'client_secret.json')}"
             )
         return load_client_config(path), path
 
@@ -179,9 +304,44 @@ class AuthManager:
         data = self.store.load()
         return data.get("account_email") if data else None
 
+    def _manual_flow(self, flow: Any, port: int) -> Any:
+        """Login sem servidor local: para Linux sem navegador ou acesso por SSH.
+
+        O usuário abre o link em qualquer computador; o Google redireciona para
+        ``http://localhost:PORTA/?code=...`` (a página não carrega, o que é
+        esperado) e o usuário cola esse endereço aqui.
+        """
+        flow.redirect_uri = f"http://localhost:{port}/"
+        url, state = flow.authorization_url(access_type="offline", prompt="consent select_account")
+        self.say(
+            "\n1. Abra este endereço em um navegador (pode ser em outro computador):\n"
+            f"\n{url}\n\n"
+            "2. Autorize o acesso. O navegador tentará abrir um endereço 'http://localhost:...'\n"
+            "   e mostrará um erro de conexão — isso é esperado.\n"
+            "3. Copie o endereço COMPLETO da barra do navegador e cole abaixo.\n"
+        )
+        pasted = (self.ask("Endereço: ") or "").strip()
+        query = parse_qs(urlsplit(pasted).query)
+        if "error" in query:
+            raise AuthError(f"O Google recusou a autorização: {query['error'][0]}")
+        code = (query.get("code") or [None])[0]
+        if not code:
+            raise AuthError("O endereço colado não contém o código de autorização (parâmetro 'code').")
+        if (query.get("state") or [None])[0] != state:
+            raise AuthError("O endereço colado não corresponde a este login (state diferente). Repita o login.")
+        try:
+            flow.fetch_token(code=code)
+        except Exception as exc:  # noqa: BLE001 - oauthlib
+            raise AuthError(f"Não foi possível concluir o login: {type(exc).__name__}: {exc}") from exc
+        return flow.credentials
+
     def login(self, client_secret: str | Path | None = None, switch: bool = False,
-              open_browser: bool = True) -> tuple[AccountInfo, bool]:
-        """Autentica. Retorna ``(conta, houve_novo_login)``."""
+              open_browser: bool = True, manual: bool = False, port: int = 0) -> tuple[AccountInfo, bool]:
+        """Autentica. Retorna ``(conta, houve_novo_login)``.
+
+        ``manual``: fluxo de copiar/colar, para máquinas sem navegador.
+        ``port``: porta fixa do servidor local (útil com ``ssh -L PORTA:localhost:PORTA``).
+        """
         if not switch and self.store.load():
             try:
                 creds = self.credentials()
@@ -193,19 +353,24 @@ class AuthManager:
         config, path = self.client_config(client_secret)
         flow = self.flow_factory(config, SCOPES)
         try:
-            creds = flow.run_local_server(
-                host="localhost",
-                port=0,
-                open_browser=open_browser,
-                authorization_prompt_message=(
-                    "Abra este endereço no navegador para autorizar o acesso (somente leitura) "
-                    "ao Google Drive:\n{url}\n"
-                ),
-                success_message="Autorização concluída. Você já pode fechar esta janela e voltar ao terminal.",
-                timeout_seconds=300,
-                access_type="offline",
-                prompt="consent select_account",
-            )
+            if manual:
+                creds = self._manual_flow(flow, port or 8765)
+            else:
+                creds = flow.run_local_server(
+                    host="localhost",
+                    port=port,
+                    open_browser=open_browser,
+                    authorization_prompt_message=(
+                        "Abra este endereço no navegador para autorizar o acesso (somente leitura) "
+                        "ao Google Drive:\n{url}\n"
+                    ),
+                    success_message="Autorização concluída. Você já pode fechar esta janela e voltar ao terminal.",
+                    timeout_seconds=300,
+                    access_type="offline",
+                    prompt="consent select_account",
+                )
+        except AuthError:
+            raise
         except Exception as exc:  # noqa: BLE001 - oauthlib/servidor local
             raise AuthError(f"O login não foi concluído: {type(exc).__name__}: {exc}") from exc
         if creds is None:

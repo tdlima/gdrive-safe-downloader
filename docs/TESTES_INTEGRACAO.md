@@ -48,6 +48,19 @@ teste e arquivos sem importância. Registre o resultado de cada item.
 | 23 | Abra o Gerenciador de Credenciais do Windows (Credenciais do Windows) | Entrada `gdrive-safe-downloader` existe após login e some após logout. |
 | 24 | Procure tokens: `Select-String -Path "$env:LOCALAPPDATA\GDriveSafeDownloader\logs\*" -Pattern "ya29\|1//"` | Nenhum resultado. |
 
+## Linux
+
+Repita os itens 1 a 24 num Linux (desktop ou servidor) e, além deles:
+
+| # | Ação | Resultado esperado |
+|---|---|---|
+| L1 | Desktop (GNOME/KDE): `python main.py login`; depois `account` | "Autorização guardada em: cofre de senhas do sistema"; entrada visível no app Senhas e chaves / KWalletManager. |
+| L2 | Servidor via SSH: `python main.py login --manual` e cole o endereço `http://localhost:8765/?...` | Login concluído; aviso de que o token foi salvo em arquivo; `ls -l ~/.local/share/gdrive-safe-downloader/token.json` mostra `-rw-------`. |
+| L3 | Servidor: `ssh -L 8765:localhost:8765 ...` e `login --no-browser --port 8765` | Login concluído pelo navegador do seu computador. |
+| L4 | `python main.py folder LINK --dest /media/$USER/PENDRIVE` (pendrive FAT32/exFAT) | Arquivos gravados normalmente, sem sobrescrever existentes. |
+| L5 | Agende o `sync` no cron (README) e aguarde | `sync --list` mostra a última sincronização; log em `~/gdrive-sync.log`. |
+| L6 | `./build.sh` e `./dist/gdrive-downloader --help` | Executável gerado e funcionando. |
+
 ## Sincronização (`sync`)
 
 | # | Ação | Resultado esperado |
