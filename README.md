@@ -4,7 +4,7 @@
 ![PowerShell](https://img.shields.io/badge/PowerShell-Windows-5391FE?logo=powershell&logoColor=white)
 ![Google Drive API](https://img.shields.io/badge/Google%20Drive%20API-v3-4285F4?logo=googledrive&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-hist%C3%B3rico-003B57?logo=sqlite&logoColor=white)
-![pytest](https://img.shields.io/badge/pytest-184%20testes-0A9EDC?logo=pytest&logoColor=white)
+![pytest](https://img.shields.io/badge/pytest-189%20testes-0A9EDC?logo=pytest&logoColor=white)
 ![Claude Code](https://img.shields.io/badge/Desenvolvido%20com-Claude%20Code-D97757?logo=claude&logoColor=white)
 
 Ferramenta de linha de comando para Windows que localiza, baixa e organiza arquivos do
@@ -30,7 +30,7 @@ interrompidos e **histórico persistente** em SQLite.
 | **keyring** + Gerenciador de Credenciais do Windows | Armazenamento seguro do token |
 | **SQLite** | Histórico, estado das tarefas e pastas sincronizadas |
 | **tqdm** | Barras de progresso no terminal |
-| **pytest** | 184 testes automatizados com simulação da Drive API |
+| **pytest** | 189 testes automatizados com simulação da Drive API |
 | **PyInstaller** | Geração do executável `.exe` |
 | **Git** e **GitHub** | Versionamento e hospedagem do código |
 | **[Claude Code](https://claude.com/claude-code)** (Anthropic) | Desenvolvimento assistido por IA: arquitetura, código, testes e documentação |
@@ -79,7 +79,7 @@ gdrive-safe-downloader/
 │   ├── logging_setup.py       # logs JSON com remoção de credenciais
 │   ├── ui.py                  # progresso, tabelas, perguntas
 │   └── errors.py              # exceções com mensagens em português
-├── tests/                     # 184 testes automatizados (Drive simulado, sem conta real)
+├── tests/                     # 189 testes automatizados (Drive simulado, sem conta real)
 │   ├── fakes.py               # simulação da Drive API com injeção de falhas
 │   └── test_*.py
 ├── docs/
@@ -286,6 +286,21 @@ Como funciona:
 - **Nada é apagado** no seu computador quando um arquivo é removido ou renomeado no Drive. Um arquivo renomeado no Drive é baixado com o nome novo, e a cópia antiga continua lá.
 - Sincronizações sem novidades não acrescentam linhas ao histórico.
 
+#### Moveu a pasta de lugar?
+
+Se você mover (ou renomear) a pasta baixada no seu computador, informe o novo local com `relocate`. **Nada é baixado de novo**: o programa só passa a procurar os arquivos no novo lugar.
+
+```powershell
+python main.py sync --list                                     # veja o número do registro (ex.: 1)
+python main.py relocate 1 "E:\Backup\workshop"                 # caminho da PRÓPRIA pasta no novo local
+python main.py relocate "LINK_DA_PASTA" "E:\Backup\workshop"   # ou identifique pelo link
+python main.py sync                                            # baixa só as novidades, no novo local
+```
+
+- Antes de aceitar, o `relocate` confere quantos arquivos já baixados estão mesmo no novo local (ex.: "9 de 9"). Se não encontrar nenhum, recusa, porque provavelmente o caminho está errado. Use `--force` para aceitar mesmo assim.
+- Também funciona se você renomeou a pasta (ex.: `workshop` → `Workshop 2026`).
+- Se você rodar `sync` depois de mover a pasta e antes do `relocate`, o programa **não** baixa tudo de novo. Ele avisa que a pasta não foi encontrada e mostra o comando `relocate` a usar.
+
 #### Sincronizar automaticamente (Agendador de Tarefas do Windows)
 
 Para verificar novidades todo dia às 8h (ajuste os caminhos para a pasta do projeto):
@@ -444,7 +459,7 @@ Variáveis de ambiente: `GDSD_HOME` (pasta de dados), `GDSD_DOWNLOAD_DIR`, `GDSD
 
 ```powershell
 pip install -r requirements-dev.txt
-python -m pytest            # 184 testes, ~4 s
+python -m pytest            # 189 testes, ~4 s
 python -m pytest -v tests\test_resume.py
 ```
 
@@ -457,7 +472,7 @@ Os testes automatizados usam uma **simulação da Drive API** (`tests/fakes.py`)
 | Download binário, checksum, quedas de rede, `Range`, servidor que ignora `Range`, arquivo remoto alterado, conflitos, exportação, `exportLinks`, espaço em disco | `test_downloader.py` |
 | Recursão, estrutura, duplicados, atalhos (arquivo, pasta, circular, sem acesso), nomes maliciosos, drive compartilhado | `test_folder.py` |
 | Interrupção, retomada após "reiniciar o programa", tarefas órfãs, retry, cancelamento, trava de instância | `test_resume.py` |
-| Sincronização: só arquivos novos (exemplo workshop/dia2/aula4), subpastas novas, arquivos alterados (`keep-both`/`replace`/`skip`), pasta renomeada no Drive, migração do banco | `test_sync.py` |
+| Sincronização: só arquivos novos (exemplo workshop/dia2/aula4), subpastas novas, arquivos alterados (`keep-both`/`replace`/`skip`), pasta renomeada no Drive, pasta movida no computador (`relocate`), migração do banco | `test_sync.py` |
 | Persistência e filtros do histórico, ausência de colunas de credencial | `test_history.py` |
 | Links válidos/inválidos | `test_links.py` |
 | Nomes no Windows, path traversal, caminhos longos | `test_paths.py` |

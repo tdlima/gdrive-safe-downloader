@@ -506,6 +506,18 @@ def cmd_sync(app: App) -> int:
     worst = 0
     for record, meta in targets:
         echo(f"\n=== Sincronizando: {record.get('remote_name') or record['folder_id']} ===")
+        local_root = Path(record["dest_root"]) / record["local_root"]
+        if not local_root.is_dir():
+            # Nunca rebaixar tudo silenciosamente: a pasta pode ter sido movida.
+            err(f"A pasta local não foi encontrada: {local_root}\n"
+                f"  Se você a moveu: python main.py relocate {record['id']} \"NOVO\\CAMINHO\\{record['local_root']}\"\n"
+                f"  Se a apagou e quer baixar tudo de novo: python main.py folder {record['folder_id']} "
+                f"--dest \"{record['dest_root']}\"\n"
+                f"  Para parar de sincronizá-la: python main.py sync --remove {record['id']}")
+            if not args.dry_run:
+                app.history.mark_synced(record["id"], "pasta local não encontrada")
+            worst = max(worst, 1)
+            continue
         try:
             if meta is None:
                 app.client.register_resource_key(record["folder_id"], record.get("resource_key"))
@@ -529,6 +541,64 @@ def cmd_sync(app: App) -> int:
             return 130
         worst = max(worst, code)
     return worst
+
+
+def _find_synced_record(app: App, ref: str) -> dict[str, Any]:
+    """Localiza um registro de sincronização pelo número (``sync --list``) ou pelo link/ID da pasta."""
+    if ref.isdigit():
+        record = app.history.get_synced_folder(int(ref))
+        if record and record["account_email"] == app.account:
+            return record
+        raise GDSDError(f"Registro #{ref} não encontrado. Veja os números com: python main.py sync --list")
+    folder_id = parse_drive_reference(ref).file_id
+    records = app.history.list_synced_folders(app.account, folder_id)
+    if not records:
+        raise GDSDError("Esta pasta do Drive não está registrada. Veja: python main.py sync --list")
+    if len(records) > 1:
+        ids = ", ".join(f"#{r['id']}" for r in records)
+        raise GDSDError(f"Esta pasta foi baixada em mais de um lugar ({ids}). Informe o número do registro.")
+    return records[0]
+
+
+def cmd_relocate(app: App) -> int:
+    """Informa o novo local de uma pasta já baixada que foi movida no computador."""
+    app.ensure_lock()
+    args = app.args
+    record = _find_synced_record(app, args.record)
+    new_root = Path(args.new_path).expanduser().resolve()
+    if not new_root.is_dir():
+        raise GDSDError(f"A pasta informada não existe: {new_root}")
+    old_root = Path(os.path.abspath(Path(record["dest_root"]) / record["local_root"]))
+    if os.path.normcase(str(old_root)) == os.path.normcase(str(new_root)):
+        echo("Esse já é o local registrado para esta pasta. Nada a fazer.")
+        return 0
+
+    done = [t for t in app.history.tasks_under(app.account, old_root) if t["status"] == H.COMPLETED]
+    found = 0
+    for t in done:
+        candidate = new_root / os.path.relpath(t["local_path"], old_root)
+        if exists(candidate) and os.path.getsize(candidate) == t["downloaded_bytes"]:
+            found += 1
+    echo(f"Pasta no Drive: {record.get('remote_name') or record['folder_id']}")
+    echo(f"Local antigo:   {old_root}")
+    echo(f"Novo local:     {new_root}")
+    echo(f"Arquivos já baixados encontrados no novo local: {found} de {len(done)}.")
+    if done and found == 0 and not args.force:
+        raise GDSDError("Nenhum dos arquivos baixados foi encontrado no novo local. Confira se o caminho "
+                        "aponta para a própria pasta (ex.: ...\\workshop) ou use --force.")
+    if old_root.is_dir():
+        echo("Aviso: a pasta antiga ainda existe. A partir de agora, só a nova será sincronizada.")
+    if app.interactive and not args.yes and not confirm("Confirmar a mudança de local?", default=True):
+        return 0
+    try:
+        updated = app.history.relocate_synced_folder(record["id"], new_root.parent, new_root.name)
+    except ValueError as exc:
+        raise GDSDError(str(exc)) from exc
+    echo(f"Local atualizado ({updated} registro(s) do histórico ajustados). Nenhum arquivo foi baixado ou movido.")
+    if found < len(done):
+        echo(f"{len(done) - found} arquivo(s) não estão no novo local e serão baixados no próximo sync.")
+    echo("Para conferir as novidades: python main.py sync --dry-run")
+    return 0
 
 
 def cmd_resume(app: App, assume_yes: bool | None = None) -> int:
@@ -835,6 +905,15 @@ def build_parser() -> argparse.ArgumentParser:
     add_conflict(sp)
     add_on_update(sp)
 
+    sp = add("relocate", "informa o novo local de uma pasta já baixada que você moveu (sem baixar de novo)")
+    sp.add_argument("record", metavar="REGISTRO",
+                    help="número mostrado em 'sync --list', ou o link/ID da pasta no Drive")
+    sp.add_argument("new_path", metavar="NOVO_CAMINHO",
+                    help="caminho da própria pasta no novo local, ex.: \"E:\\Backup\\workshop\"")
+    sp.add_argument("--force", action="store_true",
+                    help="aceita mesmo que nenhum arquivo baixado seja encontrado no novo local")
+    sp.add_argument("-y", "--yes", action="store_true", help="não pede confirmação")
+
     sp = add("resume", "retoma downloads interrompidos ou pendentes")
     sp.add_argument("task_ids", nargs="*", type=int, metavar="ID", help="tarefas específicas (padrão: todas)")
     sp.add_argument("-y", "--yes", action="store_true", help="não pede confirmação")
@@ -873,7 +952,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 COMMANDS = {
     "login": cmd_login, "account": cmd_account, "logout": cmd_logout, "search": cmd_search,
-    "download": cmd_download, "folder": cmd_folder, "sync": cmd_sync, "resume": cmd_resume, "retry": cmd_retry,
+    "download": cmd_download, "folder": cmd_folder, "sync": cmd_sync, "relocate": cmd_relocate, "resume": cmd_resume, "retry": cmd_retry,
     "cancel": cmd_cancel, "history": cmd_history, "status": cmd_status, "verify": cmd_verify,
     "formats": cmd_formats, "config": cmd_config,
 }

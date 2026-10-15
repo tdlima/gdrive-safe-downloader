@@ -258,3 +258,66 @@ def test_banco_da_versao_1_registra_pastas_ja_baixadas(settings, tmp_path):
         records = h.list_synced_folders(ACCOUNT)
     assert len(records) == 1
     assert records[0]["folder_id"] == WORKSHOP and records[0]["local_root"] == "workshop"
+
+
+# ------------------------------------------------- pasta movida no computador
+def _download_and_move(cli_drive, tmp_path, new_name="workshop"):
+    import shutil
+
+    build_workshop(cli_drive)
+    old_dest = tmp_path / "Cursos"
+    assert cli.main(["--no-input", "folder", WORKSHOP, "--dest", str(old_dest)]) == 0
+    new_parent = tmp_path / "HD externo" / "Backup"
+    new_parent.mkdir(parents=True)
+    shutil.move(str(old_dest / "workshop"), str(new_parent / new_name))
+    return new_parent / new_name
+
+
+def test_sync_com_pasta_movida_avisa_e_nao_rebaixa(cli_drive, capsys, tmp_path):
+    _download_and_move(cli_drive, tmp_path)
+    capsys.readouterr()
+    cli_drive.requests.clear()
+    assert cli.main(["--no-input", "sync"]) == 1
+    err = capsys.readouterr().err
+    assert "pasta local não foi encontrada" in err and "relocate 1" in err
+    assert media_ids(cli_drive) == []                       # nada foi baixado de novo
+    assert not (tmp_path / "Cursos" / "workshop").exists()   # nem recriado no local antigo
+
+
+def test_relocate_e_sync_baixa_somente_o_novo_no_novo_local(cli_drive, capsys, tmp_path):
+    new_root = _download_and_move(cli_drive, tmp_path)
+    assert cli.main(["--no-input", "relocate", "1", str(new_root)]) == 0
+    out = capsys.readouterr().out
+    assert "encontrados no novo local: 9 de 9" in out
+
+    cli_drive.add_file("d2a4", "aula4.mp4", b"video dia2 aula4", "dia2")
+    cli_drive.requests.clear()
+    assert cli.main(["--no-input", "sync"]) == 0
+    assert media_ids(cli_drive) == ["d2a4"]
+    assert (new_root / "dia2" / "aula4.mp4").read_bytes() == b"video dia2 aula4"
+    assert not (tmp_path / "Cursos" / "workshop").exists()
+    assert cli.main(["--no-input", "verify", "--all"]) == 0  # caminhos do histórico atualizados
+
+
+def test_relocate_aceita_pasta_renomeada_e_link(cli_drive, capsys, tmp_path):
+    new_root = _download_and_move(cli_drive, tmp_path, new_name="Workshop 2026")
+    link = f"https://drive.google.com/drive/folders/{WORKSHOP}"
+    assert cli.main(["--no-input", "relocate", link, str(new_root)]) == 0
+    cli_drive.add_file("d1a4", "aula4.mp4", b"x", "dia1")
+    cli_drive.requests.clear()
+    assert cli.main(["--no-input", "sync"]) == 0
+    assert media_ids(cli_drive) == ["d1a4"]
+    assert (new_root / "dia1" / "aula4.mp4").exists()
+
+
+def test_relocate_recusa_caminho_errado(cli_drive, capsys, tmp_path):
+    _download_and_move(cli_drive, tmp_path)
+    wrong = tmp_path / "HD externo"          # pasta pai, não a própria pasta
+    assert cli.main(["--no-input", "relocate", "1", str(wrong)]) == 1
+    assert "Nenhum dos arquivos" in capsys.readouterr().err
+    assert cli.main(["--no-input", "relocate", "1", str(tmp_path / "nao-existe")]) == 1
+
+
+def test_relocate_registro_inexistente(cli_drive, capsys, tmp_path):
+    assert cli.main(["--no-input", "relocate", "7", str(tmp_path)]) == 1
+    assert "não encontrado" in capsys.readouterr().err

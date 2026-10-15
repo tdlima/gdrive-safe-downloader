@@ -6,6 +6,7 @@ Nenhuma senha ou token é gravado neste banco.
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import threading
 from collections.abc import Iterable
@@ -246,6 +247,52 @@ class History:
             self._conn.execute("UPDATE synced_folders SET last_sync_at=?, last_summary=? WHERE id=?",
                                (now_iso(), summary, sync_id))
             self._conn.commit()
+
+    def tasks_under(self, account_email: str, root: Path) -> list[dict[str, Any]]:
+        """Tarefas desta conta cujo arquivo local fica dentro de ``root``."""
+        prefix = os.path.normcase(os.path.abspath(root)) + os.sep
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM tasks WHERE account_email=?", (account_email,)).fetchall()
+        return [dict(r) for r in rows
+                if os.path.normcase(os.path.abspath(r["local_path"])).startswith(prefix)]
+
+    def relocate_synced_folder(self, sync_id: int, new_dest_root: Path, new_local_root: str) -> int:
+        """Aponta um registro de sincronização para o novo local da pasta e
+        reescreve os caminhos das tarefas correspondentes. Retorna quantas
+        tarefas foram atualizadas. Tudo numa única transação."""
+        record = self.get_synced_folder(sync_id)
+        if record is None:
+            raise ValueError(f"Registro #{sync_id} inexistente.")
+        old_root = Path(os.path.abspath(Path(record["dest_root"]) / record["local_root"]))
+        new_root = Path(os.path.abspath(Path(new_dest_root) / new_local_root))
+        tasks = self.tasks_under(record["account_email"], old_root)
+
+        def move(path: str | None) -> str | None:
+            if not path:
+                return path
+            rel = os.path.relpath(os.path.abspath(path), old_root)
+            return str(new_root / rel)
+
+        with self._lock:
+            try:
+                for t in tasks:
+                    self._conn.execute(
+                        "UPDATE tasks SET local_path=?, temp_path=?, dest_root=?, updated_at=? WHERE id=?",
+                        (move(t["local_path"]), move(t["temp_path"]), str(new_dest_root), now_iso(), t["id"]),
+                    )
+                self._conn.execute(
+                    "UPDATE synced_folders SET dest_root=?, local_root=? WHERE id=?",
+                    (str(new_dest_root), new_local_root, sync_id),
+                )
+                self._conn.commit()
+            except sqlite3.IntegrityError as exc:
+                self._conn.rollback()
+                raise ValueError("Já existe um registro desta pasta do Drive nesse destino.") from exc
+            except BaseException:
+                self._conn.rollback()
+                raise
+        return len(tasks)
 
     def remove_synced_folder(self, sync_id: int) -> bool:
         with self._lock:
